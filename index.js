@@ -1,7 +1,7 @@
 const express = require("express");
 require("dotenv").config();
 const Joi = require("joi");
-const { MongoClient } = require("mongodb");
+const { MongoClient, ObjectId } = require("mongodb");
 
 const app = express();
 app.use(express.json());
@@ -27,7 +27,7 @@ async function connectToDatabase() {
   const client = new MongoClient(url);
   await client.connect();
   console.log("Connected successfully to MongoDB server");
-  return client.db(dbName); // return the database object to use in routes
+  return client.db(dbName); // Return the database object to use in routes
 }
 
 // POST - endpoint to create a new subreddit
@@ -40,9 +40,9 @@ app.post("/subreddits", async (req, res) => {
     const { error, value } = subredditSchema.validate(req.body);
     if (error) return res.status(400).json(error.details);
 
-    const { name, description } = value; // extract validated values
+    const { name, description } = value; //extract validated values
 
-    // check if subreddit already exists
+    // check if subreddit exists
     const subredditExists = await subredditsCollection.findOne({ name });
     if (subredditExists) {
       return res.status(409).send({ message: "Subreddit already exists" });
@@ -61,18 +61,18 @@ app.post("/subreddits", async (req, res) => {
 });
 
 // POST - endpoint to create a post in a subreddit
-app.post("/subreddits/:subredditName/posts", async (req, res) => {
+app.post("/subreddits/:subredditId/posts", async (req, res) => {
   try {
-    const { subredditName } = req.params; //extract subredditName from the route parameter
+    const { subredditId } = req.params; //extract subredditId from the route parameter
     const { title, content } = req.body;
 
     const db = await connectToDatabase();
     const subredditsCollection = db.collection("subreddits");
     const postsCollection = db.collection("posts");
 
-    // check if the specified subreddit exists
+    // check if subreddit exists
     const subredditExists = await subredditsCollection.findOne({
-      name: subredditName,
+      _id: new ObjectId(subredditId),
     });
     if (!subredditExists) {
       return res.status(404).send({ message: "Subreddit does not exist" });
@@ -83,7 +83,12 @@ app.post("/subreddits/:subredditName/posts", async (req, res) => {
     if (error) return res.status(400).json(error.details);
 
     // create and insert the new post
-    const newPost = { title, content, subredditName, createdAt: new Date() };
+    const newPost = {
+      title,
+      content,
+      subredditId: new ObjectId(subredditId), // Store ObjectId reference to subreddit
+      createdAt: new Date(),
+    };
     const result = await postsCollection.insertOne(newPost);
 
     res.status(201).send({
@@ -95,24 +100,25 @@ app.post("/subreddits/:subredditName/posts", async (req, res) => {
   }
 });
 
-// GET - endpoint to list a subredit's posts
-app.get("/subreddits/:subredditName/posts", async (req, res) => {
+// GET - endpoint to list a subreddit's posts
+app.get("/subreddits/:subredditId/posts", async (req, res) => {
   try {
-    const { subredditName } = req.params; //extract subredditName from the route parameter
+    const { subredditId } = req.params; //extract subredditId from the route parameter
     const db = await connectToDatabase();
     const postsCollection = db.collection("posts");
 
-    // query the database for posts associated with the specified subreddit
-    const posts = await postsCollection.find({ subredditName }).toArray();
+    // query database for posts associated with specified subreddit
+    const posts = await postsCollection
+      .find({ subredditId: new ObjectId(subredditId) })
+      .toArray();
 
+    // check if posts exist
     if (posts.length === 0) {
-      // if no posts found, error message
       return res
         .status(404)
         .send({ message: "No posts found for this subreddit" });
     }
 
-    // if posts  found, return them in the response
     res.status(200).json(posts);
   } catch (err) {
     console.error("Error retrieving subreddit posts: ", err);
@@ -121,8 +127,59 @@ app.get("/subreddits/:subredditName/posts", async (req, res) => {
 });
 
 // GET - endpoint to get the comments for a post
+app.get("/subreddits/:subredditId/posts/:postId/comments", async (req, res) => {
+  try {
+    const { postId } = req.params; //extract postId from the route parameter
+    const db = await connectToDatabase();
+    const commentsCollection = db.collection("comments");
+
+    const comments = await commentsCollection
+      .find({ postId: new ObjectId(postId) })
+      .toArray();
+
+    // check if comments for post exist
+    if (comments.length === 0) {
+      return res
+        .status(404)
+        .send({ message: "No comments found for this post" });
+    }
+
+    res.status(200).json(comments);
+  } catch (err) {
+    console.error("Error retrieving comments: ", err);
+    res.status(500).send({ message: "Internal server error" });
+  }
+});
 
 // PUT - endpoint to edit a post
+app.put("/subreddits/:subredditId/posts/:postId", async (req, res) => {
+  try {
+    const { postId } = req.params; //extract postId from the route parameter
+    const { title, content } = req.body;
+
+    const db = await connectToDatabase();
+    const postsCollection = db.collection("posts");
+
+    // validate the updated data against the post schema
+    const { error } = postSchema.validate({ title, content });
+    if (error) return res.status(400).json(error.details);
+
+    const updateResult = await postsCollection.updateOne(
+      { _id: new ObjectId(postId) },
+      { $set: { title, content } }
+    );
+
+    // check if post exists
+    if (updateResult.matchedCount === 0) {
+      return res.status(404).send({ message: "Post not found" });
+    }
+
+    res.status(200).send({ message: "Post updated successfully" });
+  } catch (err) {
+    console.error("Error updating post: ", err);
+    res.status(500).send({ message: "Internal server error" });
+  }
+});
 
 // start the express server
 const port = process.env.PORT || 3000;
