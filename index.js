@@ -8,7 +8,7 @@ app.use(express.json());
 
 // MongoDB connection URL and database name
 const url = process.env.DB_URL;
-const dbName = "reddit-api-db";
+const dbName = process.env.DB_NAME;
 
 // validation schema for subreddit data
 const subredditSchema = Joi.object({
@@ -27,7 +27,7 @@ async function connectToDatabase() {
   const client = new MongoClient(url);
   await client.connect();
   console.log("Connected successfully to MongoDB server");
-  return client.db(dbName); // Return the database object to use in routes
+  return client.db(dbName); //return the database object to use in routes
 }
 
 // POST - endpoint to create a new subreddit
