@@ -86,7 +86,7 @@ app.post("/subreddits/:subredditId/posts", async (req, res) => {
     const newPost = {
       title,
       content,
-      subredditId: new ObjectId(subredditId), // Store ObjectId reference to subreddit
+      subredditId: new ObjectId(subredditId), //store ObjectId reference to subreddit
       createdAt: new Date(),
     };
     const result = await postsCollection.insertOne(newPost);
